@@ -12,7 +12,7 @@ use version_ranges::Ranges;
 use walkdir::WalkDir;
 
 use uv_fs::Simplified;
-use uv_globfilter::{parse_portable_glob, GlobDirFilter};
+use uv_globfilter::{GlobDirFilter, PortableGlobParser};
 use uv_normalize::{ExtraName, PackageName};
 use uv_pep440::{Version, VersionSpecifiers};
 use uv_pep508::{
@@ -395,11 +395,12 @@ impl PyProjectToml {
                 let mut license_files = Vec::new();
                 let mut license_globs_parsed = Vec::new();
                 for license_glob in license_globs {
-                    let pep639_glob =
-                        parse_portable_glob(license_glob).map_err(|err| Error::PortableGlob {
+                    let pep639_glob = PortableGlobParser.parse(license_glob).map_err(|err| {
+                        Error::PortableGlob {
                             field: license_glob.to_string(),
                             source: err,
-                        })?;
+                        }
+                    })?;
                     license_globs_parsed.push(pep639_glob);
                 }
                 let license_globs =
@@ -410,14 +411,18 @@ impl PyProjectToml {
                         }
                     })?;
 
-                for entry in WalkDir::new(root).into_iter().filter_entry(|entry| {
-                    license_globs.match_directory(
-                        entry
-                            .path()
-                            .strip_prefix(root)
-                            .expect("walkdir starts with root"),
-                    )
-                }) {
+                for entry in WalkDir::new(root)
+                    .sort_by_file_name()
+                    .into_iter()
+                    .filter_entry(|entry| {
+                        license_globs.match_directory(
+                            entry
+                                .path()
+                                .strip_prefix(root)
+                                .expect("walkdir starts with root"),
+                        )
+                    })
+                {
                     let entry = entry.map_err(|err| Error::WalkDir {
                         root: root.to_path_buf(),
                         err,
